@@ -301,16 +301,65 @@ class SensorProcessor {
     const segments = this._splitAndMerge(allIdx, sorted);
 
     const wallLines = [], wallSegs = [];
+    const segmentsData = [];
     for (const segIdx of segments) {
       if (segIdx.length < 2) continue;
       const segPts = segIdx.map(i => sorted[i]);
       const res    = this._ransacLine(segPts);
       if (!res) continue;
+      const [a, b, c] = res.line;
       wallLines.push(res.line);
-      wallSegs.push([
-        segPts[0][0], segPts[0][1],
-        segPts[segPts.length - 1][0], segPts[segPts.length - 1][1],
-      ]);
+      
+      // Proyeksikan titik awal dan akhir ke garis RANSAC agar lurus sempurna
+      const [px1, py1] = segPts[0];
+      const [px2, py2] = segPts[segPts.length - 1];
+      
+      const dist1 = a * px1 + b * py1 + c;
+      const x1 = px1 - a * dist1;
+      const y1 = py1 - b * dist1;
+      
+      const dist2 = a * px2 + b * py2 + c;
+      const x2 = px2 - a * dist2;
+      const y2 = py2 - b * dist2;
+
+      segmentsData.push({
+        line: res.line,
+        p1: [x1, y1],
+        p2: [x2, y2]
+      });
+    }
+
+    // Sambungkan ujung-ujung segmen yang berdekatan untuk membentuk sudut kotak yang rapi
+    const N_segs = segmentsData.length;
+    if (N_segs > 1) {
+      for (let i = 0; i < N_segs; i++) {
+        const seg1 = segmentsData[i];
+        const seg2 = segmentsData[(i + 1) % N_segs];
+        
+        const [a1, b1, c1] = seg1.line;
+        const [a2, b2, c2] = seg2.line;
+        
+        const det = a1 * b2 - a2 * b1;
+        // Jika garis tidak sejajar (det tidak mendekati 0)
+        if (Math.abs(det) > 0.1) {
+          const ix = (b1 * c2 - b2 * c1) / det;
+          const iy = (a2 * c1 - a1 * c2) / det;
+          
+          // Cek jarak perpotongan dari ujung segmen
+          const distToP2 = Math.hypot(ix - seg1.p2[0], iy - seg1.p2[1]);
+          const distToP1 = Math.hypot(ix - seg2.p1[0], iy - seg2.p1[1]);
+          
+          // Jika perpotongan tidak terlalu jauh, gabungkan (membentuk sudut tajam)
+          if (distToP2 < 80 && distToP1 < 80) {
+            seg1.p2 = [ix, iy];
+            seg2.p1 = [ix, iy];
+          }
+        }
+      }
+    }
+
+    for (const seg of segmentsData) {
+      wallSegs.push([seg.p1[0], seg.p1[1], seg.p2[0], seg.p2[1]]);
     }
 
     // Phantom: titik yang jauh dari SEMUA wall line

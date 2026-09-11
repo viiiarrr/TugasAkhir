@@ -570,7 +570,10 @@ window.addEventListener('resize', () => {
    WEBSOCKET (LIVE MODE)
    ============================================================ */
 function initWebSocket() {
-  const wsHost = location.hostname || 'localhost';
+  // Jika diakses dari GitHub Pages, paksa koneksi ke localhost
+  // karena script server.py berjalan di komputer lokal pengguna.
+  const isGitHub = location.hostname.includes('github.io');
+  const wsHost = isGitHub ? 'localhost' : (location.hostname || 'localhost');
   ws = new WebSocket(`ws://${wsHost}:8765`);
   
   ws.onopen = () => {
